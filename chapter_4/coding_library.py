@@ -1,6 +1,7 @@
 #pylint: disable-all
 import math
 import numpy as np
+import scipy.linalg as linalg
 
 class StockOption():
     def __init__(self, S0, K, r, T, N, params):
@@ -232,5 +233,85 @@ class TrinomialLattice(TrinomialTreeOption):
         payoffs = np.maximum(payoffs, early_ex_payoffs)
         return payoffs
     
+class FiniteDifferences():
+    def __init__(self, S0, K, r, T, sigma, Smax, M, N, is_call = True):
+        self.S0 = S0
+        self.K = K
+        self.r = r
+        self.T = T
+        self.sigma = sigma
+        self.Smax = Smax
+        self.M, self.N = int(M), int(N)
+        self.is_call = is_call
+
+        self.dS = Smax/float(self.M)
+        self.dt = T/float(self.N)
+        self.i_values = np.arange(self.M)
+        self.j_values = np.arange(self.N)
+        self.grid = np.zeros(shape = (self.M+1, self.N+1))
+        self.boundary_conds = np.linspace(0, Smax, self.M+1)
+
+    def _setup_boudary_conditions_(self):
+        pass
+
+    def _setup_coefficients_(self):
+        pass
+
+    def _traverse_grid_(self):
+        pass
+
+    def _interpolate_(self):
+        return np.interp(self.S0, self.boundary_conds, self.grid[:, 0])
+    
+    def price(self):
+        self._setup_boudary_conditions_()
+        self._setup_coefficients_()
+        self._traverse_grid_()
+        return self._interpolate_()
+    
+class FDExplicitEu(FiniteDifferences):
+    def _setup_boudary_conditions_(self):
+        if self.is_call:
+            self.grid[:,-1] = np.maximum(self.boundary_conds - self.K, 0)
+            self.grid[-1,:-1] = (self.Smax - self.K)*np.exp(-self.r*self.dt*(self.N - self.j_values))
+        else:
+
+            self.grid[:, -1] = np.maximum(self.K - self.boundary_conds, 0)
+            self.grid[0, :-1] = (self.K -self.Smax)*np.exp(-self.r*self.dt*(self.N-self.j_values))
+        return
+    
+    def _setup_coefficients_(self):
+        self.a = 0.5*self.dt*((self.sigma**2)*(self.i_values**2)-self.r*self.i_values)
+        self.b = 1-self.dt*((self.sigma**2)*(self.i_values**2)+self.r)
+        self.c = 0.5*self.dt*((self.sigma**2)*(self.i_values**2)+self.r*self.i_values)
+        return
+    
+    def _traverse_grid_(self):
+        for j in reversed(self.j_values):
+            for i in range(self.M)[2:]:
+                self.grid[i,j] = self.a[i]*self.grid[i-1,j+1]+self.b[i]*self.grid[i,j+1]+self.c[i]*self.grid[i+1,j+1]
+        return
+    
+class FDImplicitEu(FDExplicitEu):
+    def _setup_coefficients_(self):
+        self.a = 0.5*(self.r*self.dt*self.i_values - (self.sigma**2)*self.dt*(self.i_values**2))
+        self.b = 1+(self.sigma**2)*self.dt*(self.i_values**2)+self.r*self.dt
+        self.c = -0.5*(self.r*self.dt*self.i_values + (self.sigma**2)*self.dt*(self.i_values**2))
+
+        self.coeffs = np.diag(self.a[2:self.M], -1)+np.diag(self.b[1:self.M])+np.diag(self.c[1:self.M-1], 1)
+        return
+    
+    def _traverse_grid_(self):
+        P,L,U = linalg.lu(self.coeffs)
+        aux = np.zeros(self.M-1)
+
+        for j in reversed(range(self.N)):
+            aux[0] = np.dot(-self.a[1], self.grid[0,j])
+            x1 = linalg.solve(L, self.grid[1:self.M, j+1]+aux)
+            x2 = linalg.solve(U,x1)
+            self.grid[1:self.M,j] = x2
+        return
+
+
 if __name__ == "__main__":
     pass
