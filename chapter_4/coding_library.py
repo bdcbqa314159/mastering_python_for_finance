@@ -57,8 +57,47 @@ class BinomialEuropeanOption(StockOption):
         payoffs = self.__begin_tree_traversal__()
 
         return payoffs[0]
+    
+class BinomialTreeOption(StockOption):
+    def __setup_parameters__(self):
+        self.u = 1+self.pu
+        self.d = 1-self.pd
+        self.qu = (math.exp((self.r-self.div)*self.dt)-self.d)/(self.u-self.d)
+        self.qd = 1-self.qu
+        return
+    
+    def _initialize_stock_price_tree_(self):
+        self.STs = [np.array([self.S0])]
+        for i in range(self.N):
+            prev_branches = self.STs[-1]
+            st = np.concatenate((prev_branches*self.u, [prev_branches[-1]*self.d]))
+            self.STs.append(st)
+        return
+       
+    def _initialize_payoffs_tree_(self):
+        return np.maximum(0, (self.STs[self.N]-self.K) if self.is_call else (self.K-self.STs[self.N]))
+    
+    def __check_early_exercise__(self, payoffs, node):
+        early_ex_payoff = (self.STs[node]-self.K) if self.is_call else (self.K-self.STs[node])
+        return np.maximum(payoffs, early_ex_payoff)
+    
+    def _traverse_tree_(self, payoffs):
+        for i in reversed(range(self.N)):
+            payoffs = (payoffs[:-1]*self.qu+payoffs[1:]*self.qd)*self.df
+            if not self.is_european:
+                payoffs = self.__check_early_exercise__(payoffs,i)
 
-
+        return payoffs
+    
+    def __begin_tree_traversal__(self):
+        payoffs = self._initialize_payoffs_tree_()
+        return self._traverse_tree_(payoffs)
+    
+    def price(self):
+        self.__setup_parameters__()
+        self._initialize_stock_price_tree_()
+        payoffs = self.__begin_tree_traversal__()
+        return payoffs[0]
+    
 if __name__ == "__main__":
     pass
-
