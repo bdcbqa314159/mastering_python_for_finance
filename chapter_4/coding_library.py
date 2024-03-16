@@ -185,6 +185,52 @@ class TrinomialTreeOption(BinomialTreeOption):
             if not self.is_european:
                 payoffs = self.__check_early_exercise__(payoffs, i)
         return payoffs
+    
+class BinomialCRRLattice(BinomialCRROption):
+    def _setup_parameters_(self):
+        super()._setup_parameters_()
+        self.M = 2*self.N+1
+        return
+    
+    def _initialize_stock_price_tree_(self):
+        self.STs = np.zeros(self.M)
+        self.STs[0] = self.S0*self.u**self.N
 
+        for i in range(self.M)[1:]:
+            self.STs[i] = self.STs[i-1]*self.d
+
+    def _initialize_payoffs_tree_(self):
+        odd_nodes = self.STs[::2]
+        return np.maximum(0, (odd_nodes-self.K) if self.is_call else (self.K-odd_nodes))
+    
+    def __check_early_exercise__(self, payoffs, node):
+        self.STs = self.STs[1:-1]
+        odd_STs = self.STs[::2]
+        early_ex_payoffs = (odd_STs-self.K) if self.is_call else (self.K-odd_STs)
+        payoffs = np.maximum(payoffs, early_ex_payoffs)
+        return payoffs
+    
+class TrinomialLattice(TrinomialTreeOption):
+    def _setup_parameters_(self):
+        super()._setup_parameters_()
+        self.M = 2*self.N+1
+        return 
+    
+    def _initialize_stock_price_tree_(self):
+        self.STs = np.zeros(self.M)
+        self.STs[0] = self.S0*self.u**self.N
+
+        for i in range(self.M)[1:]:
+            self.STs[i] = self.STs[i-1]*self.d
+    
+    def _initialize_payoffs_tree_(self):
+        return np.maximum(0, (self.STs-self.K) if self.is_call else (self.K-self.STs))
+    
+    def __check_early_exercise__(self, payoffs, node):
+        self.STs = self.STs[1:-1]
+        early_ex_payoffs = (self.STs-self.K) if self.is_call else (self.K-self.STs)
+        payoffs = np.maximum(payoffs, early_ex_payoffs)
+        return payoffs
+    
 if __name__ == "__main__":
     pass
