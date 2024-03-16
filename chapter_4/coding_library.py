@@ -312,6 +312,35 @@ class FDImplicitEu(FDExplicitEu):
             self.grid[1:self.M,j] = x2
         return
 
+class FDCnEu(FDExplicitEu):
+
+    def _setup_coefficients_(self):
+        self.alpha = 0.25*self.dt*((self.sigma**2)*(self.i_values**2)-self.r*self.i_values)
+        self.beta = -self.dt*0.5*((self.sigma**2)*(self.i_values**2)+self.r)
+        self.gamma = 0.25*self.dt*((self.sigma**2)*(self.i_values**2)+self.r*self.i_values)
+
+        self.M1 = -np.diag(self.alpha[2:self.M], -1)+ np.diag(1-self.beta[1:self.M])-np.diag(self.gamma[1:self.M-1],1)
+        self.M2 = np.diag(self.alpha[2:self.M], -1)+np.diag(1+self.beta[1:self.M])+np.diag(self.gamma[1:self.M-1], 1)
+        return
+    
+    def _traverse_grid_(self):
+        _ ,L,U = linalg.lu(self.M1)
+        for j in reversed(range(self.N)):
+            x1 = linalg.solve(L, np.dot(self.M2, self.grid[1:self.M, j+1]))
+            x2 = linalg.solve(U,x1)
+
+            self.grid[1:self.M,j] = x2
+        return
+
+class FDCnDo(FDCnEu):
+
+    def __init__(self, S0, K, r, T, sigma, Sbarrier, Smax, M, N, is_call=True):
+        super().__init__(S0, K, r, T, sigma, Smax, M, N, is_call)
+        self.dS = (Smax-Sbarrier)/float(self.M)
+        self.boundary_conds = np.linspace(Sbarrier, Smax, self.M+1)
+        self.i_values = self.boundary_conds/self.dS
+        return 
+
 
 if __name__ == "__main__":
     pass
