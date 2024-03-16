@@ -154,6 +154,37 @@ class BinomialLRWithGreeks(BinomialLROption):
 
         gamma = ((payoff_up-option_value)/dS_up - (option_value-payoff_down)/dS_down)/((self.S0 + S_up)*0.5 - (self.S0+S_down)*0.5)
         return option_value, delta, gamma
+    
+class TrinomialTreeOption(BinomialTreeOption):
+    def _setup_parameters_(self):
+        self.u = math.exp(self.sigma*math.sqrt(2.*self.dt))
+        self.d = 1./self.u
+        self.m = 1
+
+        sqrt_semi_step = math.sqrt(0.5*self.dt)
+        term_1 = math.exp((self.r - self.div)*0.5*self.dt)
+        term_2 = math.exp(self.sigma*sqrt_semi_step)
+        term_3 = math.exp(-self.sigma*sqrt_semi_step)
+
+        self.qu = ((term_1 - term_3)/(term_2-term_3))**2
+        self.qd = ((-term_1 + term_2)/(term_2-term_3))**2
+        self.qm = 1-self.qu-self.qd
+        return 
+    
+    def _initialize_stock_price_tree_(self):
+        self.STs = [np.array([self.S0])]
+        for i in range(self.N):
+            prev_nodes = self.STs[-1]
+            self.ST = np.concatenate((prev_nodes*self.u, [prev_nodes[-1]*self.m, prev_nodes[-1]*self.d]))
+            self.STs.append(self.ST)
+        return
+    
+    def _traverse_tree_(self, payoffs):
+        for i in reversed(range(self.N)):
+            payoffs = (payoffs[:-2]*self.qu + payoffs[1:-1]*self.qm+payoffs[2:]*self.qd)*self.df
+            if not self.is_european:
+                payoffs = self.__check_early_exercise__(payoffs, i)
+        return payoffs
 
 if __name__ == "__main__":
     pass
