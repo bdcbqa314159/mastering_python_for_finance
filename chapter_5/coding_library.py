@@ -132,5 +132,47 @@ def bond_convexity(price, par, T, coup, freq, dy = 0.01):
     return mconvexity
 
 
+def vasicek(r0, K, theta, sigma, T = 1., N = 10, seed = 777):
+    np.random.seed(seed)
+    dt = T/float(N)
+    rates = [r0]
+
+    for i in range(N):
+        dr = K*(theta-rates[-1])*dt + sigma*np.random.normal()
+        rates.append(rates[-1]+dr)
+    return range(N+1), rates
+
+def cir(r0, K, theta,sigma, T = 1., N=10, seed=777):
+    np.random.seed(seed)
+    dt = T/float(N)
+    rates = [r0]
+    for i in range(N):
+        dr = K*(theta-rates[-1])*dt + sigma*math.sqrt(rates[-1])*np.random.normal()
+        rates.append(rates[-1] + dr)
+    return range(N+1), rates
+
+def rendleman_bartter(r0, theta, sigma, T = 1., N=10, seed = 777):
+    np.random.seed(777)
+    dt = T/float(N)
+    rates = np.array((N+1)*[0.])
+    rates[0] = r0
+    for i in range(1, N+1):
+        dr = theta*rates[i-1]*dt+ sigma*rates[i-1]*np.random.normal()
+        rates[i] = rates[i-1]+dr
+    return range(N+1), rates
+
+def brennan_schwartz(r0, K, theta, sigma, T = 1., N=10, seed = 777):
+    np.random.seed(777)
+    dt = T/float(N)
+    rates = np.array((N+1)*[0.])
+    rates[0] = r0
+    for i in range(1, N+1):
+        dr = K*(theta-rates[i-1])*dt+ sigma*rates[i-1]*np.random.normal()
+        rates[i] = rates[i-1]+dr
+    return range(N+1), rates
+
+
+
+
 if __name__ == "__main__":
     pass
