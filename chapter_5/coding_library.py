@@ -1,7 +1,7 @@
 #pylint: disable-all
 import math
 import numpy as np
-import scipy.linalg as linalg
+import scipy.optimize as optimize
 import sys
 import matplotlib.pyplot as plt
 
@@ -63,6 +63,73 @@ class BootstrapYieldCurve():
     def zero_coupon_spot_rate(self, par, price, T):
         spot_rate = math.log(par/price)/T
         return spot_rate
+    
+class ForwardRates():
+    def __init__(self):
+        self.forward_rates = []
+        self.spot_rates = dict()
+
+    def add_spot_rate(self, T, spot_rate):
+        self.spot_rates[T] = spot_rate
+    
+    def __calculate_forwar_rate__(self, T1, T2):
+        R1 = self.spot_rates[T1]
+        R2 = self.spot_rates[T2]
+
+        forward_rate = (R2*T2 - R1*T1)/(T2-T1)
+        return forward_rate
+    
+    def get_forward_rates(self):
+        periods = sorted(self.spot_rates.keys())
+        for T2,T1 in zip(periods, periods[1:]):
+            forward_rate = self.__calculate_forwar_rate__(T1,T2)
+            self.forward_rates.append(forward_rate)
+        return self.forward_rates
+    
+def bond_ytm(price, par, T, coup, freq = 2, guess = 0.05):
+    freq = float(freq)
+    periods = T*freq
+
+    coupon = (coup/100.)*(par/freq)
+    dt = [(i+1)/freq for i in range(int(periods))]
+
+    ytm_func = lambda y: sum([coupon/(1+y/freq)**(freq*t) for t in dt])+ par/(1+y/freq)**(freq*T) - price
+
+    return optimize.newton(ytm_func, guess)
+
+def bond_price(par, T, ytm, coup, freq = 2):
+    freq = float(freq)
+    periods = T*freq
+
+    coupon = (coup/100.)*(par/freq)
+    dt = [(i+1)/freq for i in range(int(periods))]
+
+    price = sum([coupon/(1+ytm/freq)**(freq*t) for t in dt])+ par/(1+ytm/freq)**(freq*T)
+
+    return price
+
+
+def bond_mod_duration(price, par, T, coup, freq, dy = 0.01):
+    ytm = bond_ytm(price, par, T, coup, freq)
+    ytm_minus = ytm-dy
+    ytm_plus = ytm+dy
+
+    price_minus = bond_price(par, T, ytm_minus, coup, freq)
+    price_plus = bond_price(par, T, ytm_plus, coup, freq)
+
+    mduration = (price_minus-price_plus)/(2*price*dy)
+    return mduration
+
+def bond_convexity(price, par, T, coup, freq, dy = 0.01):
+    ytm = bond_ytm(price, par, T, coup, freq)
+    ytm_minus = ytm-dy
+    ytm_plus = ytm+dy
+
+    price_minus = bond_price(par, T, ytm_minus, coup, freq)
+    price_plus = bond_price(par, T, ytm_plus, coup, freq)
+
+    mconvexity = (price_minus+price_plus-2*price)/(price*dy**2)
+    return mconvexity
 
 
 if __name__ == "__main__":
