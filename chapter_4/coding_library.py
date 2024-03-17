@@ -2,6 +2,8 @@
 import math
 import numpy as np
 import scipy.linalg as linalg
+import sys
+import matplotlib.pyplot as plt
 
 class StockOption():
     def __init__(self, S0, K, r, T, N, params):
@@ -340,7 +342,92 @@ class FDCnDo(FDCnEu):
         self.boundary_conds = np.linspace(Sbarrier, Smax, self.M+1)
         self.i_values = self.boundary_conds/self.dS
         return 
+    
+class FDCnAm(FDCnEu):
+    def __init__(self, S0, K, r, T, sigma, Smax, M, N, omega, tol, is_call = True):
+        super().__init__(S0, K, r, T, sigma, Smax, M, N, is_call)
+        self.omega = omega
+        self.tol = tol
+        self.i_values = np.arange(self.M+1)
+        self.j_values = np.arange(self.N+1)
+        return
+    
+    def _setup_boudary_conditions_(self):
+        if self.is_call:
+            self.payoffs = np.maximum(self.boundary_conds[1:self.M]-self.K,0)
+        else:
+            self.payoffs = np.maximum(self.K- self.boundary_conds[1:self.M],0)
+        
+        self.past_values = self.payoffs
+        self.boundary_values = self.K*np.exp(-self.r*self.dt*(self.N-self.j_values))
 
+        return
+
+    def _traverse_grid_(self):
+        aux = np.zeros(self.M-1)
+        new_values = np.zeros(self.M-1)
+
+        for j in reversed(range(self.N)):
+
+            aux[0] = self.alpha[1]*(self.boundary_values[j] + self.boundary_values[j+1])
+            rhs = np.dot(self.M2, self.past_values)+aux
+            old_values = np.copy(self.past_values)
+            error = sys.float_info.max
+
+            while self.tol <error:
+                new_values[0] = max(self.payoffs[0], old_values[0]+ self.omega/(1-self.beta[1])*(rhs[0] - (1-self.beta[1])*old_values[0]+ (self.gamma[1]*old_values[1])))
+                for k in range(self.M-2)[1:]:
+                    new_values[k] = max(self.payoffs[k], old_values[k]+ self.omega/(1-self.beta[k+1])*(rhs[k] + self.alpha[k+1]*new_values[k-1]-(1-self.beta[k+1])*old_values[k]+self.gamma[k+1]*old_values[k+1]))
+                
+                new_values[-1] = max(self.payoffs[-1], old_values[-1] + self.omega/(1-self.beta[-2])*(rhs[-1]+ self.alpha[-2]*new_values[-2]-(1-self.beta[-2])*old_values[-1]))
+
+                error = np.linalg.norm(new_values - old_values)
+                old_values = np.copy(new_values)
+            self.past_values = np.copy(new_values)
+        
+        self.values = np.concatenate(([self.boundary_values[0]], new_values, [0]))
+    
+    def _interpolate_(self):
+        return np.interp(self.S0, self.boundary_conds, self.values)
+
+
+def bisection(f, a,b,tol = 0.01, max_iter = 10):
+    
+    c = 0
+    n = 1
+    while n<=max_iter:
+        c = a + (b-a)/2
+        if f(c) == 0. or abs(a-b)<tol:
+            return c,n
+        
+        n+=1
+        if f(c)<0:
+            a = c
+        else:
+            b = c
+    return c,n
+
+class ImpliedVolatilityModel():
+    def __init__(self, S0, r, T, div, N, is_call=False):
+        self.S0 = S0
+        self.r = r
+        self.T = T
+        self.div = div
+        self.N = N
+        self.is_call = is_call
+        return
+    
+    def _option_valuation_(self, K, sigma):
+        lr_option = BinomialLROption(self.S0, K, self.r, self.T, self.N, {"sigma": sigma, "is_call":self.is_call, "div": self.div})
+        return lr_option.price()
+    
+    def get_implied_volatilities(self, Ks, opt_prices):
+        imp_vols = []
+        for i in range(len(Ks)):
+            f = lambda sigma: self._option_valuation_(Ks[i], sigma) - opt_prices[i]
+            impv = bisection(f, 0.01, 0.99, 0.0001, 100)[0]
+            imp_vols.append(impv)
+        return imp_vols
 
 if __name__ == "__main__":
     pass
